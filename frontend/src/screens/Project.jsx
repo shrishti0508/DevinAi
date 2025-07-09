@@ -7,6 +7,7 @@ import Markdown from 'markdown-to-jsx'
 import hljs from 'highlight.js';
 import { getWebContainer } from '../config/webcontainer'
 
+
 export const Project = () => {
 
     const location = useLocation()
@@ -56,28 +57,30 @@ export const Project = () => {
 
     }
 
-    const send = () => {
-        const messageData = {
-            message,
-            sender: user
-        };
-
-        sendMessage('project-message', messageData);
-        appendOutgoingMessage(messageData);
-
-        setMessage("");
-
-    };
     // const send = () => {
-
-    //     sendMessage('project-message', {
+    //     const messageData = {
     //         message,
     //         sender: user
-    //     })
-    //     setMessages(prevMessages => [ ...prevMessages, { sender: user, message } ]) // Update messages state
-    //     setMessage("")
+    //     };
 
-    // }
+    //     sendMessage('project-message', messageData);
+    //     appendOutgoingMessage(messageData);
+
+    //     setMessage("");
+
+    // };
+    const send = () => {
+
+        sendMessage('project-message', {
+            message,
+            sender: user
+        })
+         appendOutgoingMessage(message);
+
+        setMessages(prevMessages => [ ...prevMessages, { sender: user, message } ]) // Update messages state
+        setMessage("")
+
+    }
 
 
 
@@ -118,12 +121,25 @@ export const Project = () => {
     function appendIncomingMessage(messageObject) {
         const messageBox = document.querySelector('.message-box');
         const message = document.createElement('div');
-        message.classList.add('message', 'max-w-56', 'flex', 'flex-col', 'p-2', 'bg-slate-50','rounded-md');
-        message.innerHTML = `
+        message.classList.add('message', 'max-w-56', 'flex', 'flex-col', 'p-2', 'bg-slate-50', 'rounded-md');
+
+        if (messageObject.sender._id === 'ai') {
+            const markdown = (<Markdown>{messageObject.message}</Markdown>)
+            message.innerHTML = `
+           <small class ='opacity-65text-xs'>${messageObject.sender.email}</small>
+           <p class='text-sm'>${markdown}</p>
+           `
+        }
+
+        else {
+            message.innerHTML = `
         <small class="opacity-65 text-xs">${messageObject.sender.email}</small>
         <p class="text-sm">${messageObject.message}</p>
-    `;
-        messageBox.appendChild(message);
+    `
+            messageBox.appendChild(message);
+        }
+
+
         scrollToBottom()
 
     }
@@ -131,7 +147,7 @@ export const Project = () => {
     function appendOutgoingMessage(messageObject) {
         const messageBox = document.querySelector('.message-box');
         const message = document.createElement('div');
-        message.classList.add('ml-auto', 'message', 'max-w-56', 'flex', 'flex-col', 'p-2', 'bg-slate-50','rounded-md');
+        message.classList.add('ml-auto', 'message', 'max-w-56', 'flex', 'flex-col', 'p-2', 'bg-slate-50', 'rounded-md');
         message.innerHTML = `
         <small class="opacity-65 text-xs">${messageObject.sender.email}</small>
         <p class="text-sm">${messageObject.message}</p>
@@ -141,7 +157,7 @@ export const Project = () => {
         scrollToBottom()
 
     }
-     function scrollToBottom() {
+    function scrollToBottom() {
         messageBox.current.scrollTop = messageBox.current.scrollHeight
     }
 
@@ -162,12 +178,12 @@ export const Project = () => {
 
                 <div className="conversational-area pt-14 pb-10 flex flex-col flex-grow 
                 h-full relative">
-                   
-                        <div ref={messageBox}
-                            className="message-box p-1 flex-grow overflow-y-auto  flex flex-col gap-1 scrollbar-hide">
-                        </div>
-                    
-                    
+
+                    <div ref={messageBox}
+                        className="message-box p-1 flex-grow overflow-y-auto  flex flex-col gap-1 scrollbar-hide">
+                    </div>
+
+
                     <div className="inputField w-full flex absolute bottom-0">
                         <input value={message}
                             onChange={(e) => setMessage(e.target.value)}

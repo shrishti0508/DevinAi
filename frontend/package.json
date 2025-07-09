@@ -9,12 +9,11 @@
     "lint": "eslint .",
     "preview": "vite preview"
   },
-  "dependencies": 
-  {
+  "dependencies": {
     "@webcontainer/api": "^1.6.1",
     "axios": "^1.9.0",
     "highlight.js": "^11.11.1",
-    "markdown-to-jsx": "^7.7.6",
+    "markdown-to-jsx": "^7.7.10",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "react-router-dom": "^7.6.0",
