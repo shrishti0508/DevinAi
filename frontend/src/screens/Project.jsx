@@ -4,9 +4,21 @@ import { useNavigate, useLocation } from 'react-router-dom'
 import axios from '../config/axios'
 import { initializeSocket, receiveMessage, sendMessage } from '../config/socket'
 import Markdown from 'markdown-to-jsx'
-import hljs from 'highlight.js';
+import hljs from 'highlight.js'
+import 'highlight.js/styles/atom-one-dark.min.css';
 import { getWebContainer } from '../config/webcontainer'
 
+function SyntaxHighlightedCode(props) {
+  const ref = useRef(null)
+
+  useEffect(() => {
+    if (ref.current && props.className?.includes('lang-')) {
+      hljs.highlightElement(ref.current)
+    }
+  }, [props.className, props.children])
+
+  return <code {...props} ref={ref} />
+}
 
 export const Project = () => {
 
@@ -18,15 +30,10 @@ export const Project = () => {
     const [project, setProject] = useState(location.state.project)
     const [message, setMessage] = useState('')
     const { user } = useContext(UserContext)
-    const messageBox = React.createRef();
+    const messageBox = useRef(null);
 
     const [users, setUsers] = useState([])
     const [messages, setMessages] = useState([])
-
-
-
-
-
 
 
 
@@ -57,32 +64,21 @@ export const Project = () => {
 
     }
 
-    // const send = () => {
-    //     const messageData = {
-    //         message,
-    //         sender: user
-    //     };
-
-    //     sendMessage('project-message', messageData);
-    //     appendOutgoingMessage(messageData);
-
-    //     setMessage("");
-
-    // };
     const send = () => {
 
         sendMessage('project-message', {
             message,
             sender: user
         })
-         appendOutgoingMessage(message);
+        appendOutgoingMessage({
+            sender: user,
+            message
+        });
 
-        setMessages(prevMessages => [ ...prevMessages, { sender: user, message } ]) // Update messages state
+        setMessages(prevMessages => [...prevMessages, { sender: user, message }])
         setMessage("")
 
     }
-
-
 
     useEffect(() => {
         initializeSocket(project._id);
@@ -90,6 +86,7 @@ export const Project = () => {
         const handler = (data) => {
             console.log(data);
             appendIncomingMessage(data);
+            setMessages(prevMessages => [...prevMessages, data])
         };
 
         receiveMessage('project-message', handler);
@@ -110,6 +107,7 @@ export const Project = () => {
             console.log(err);
         })
 
+        
         return () => {
             // Cleanup the socket listener to avoid stacking
             window.socket?.off('project-message', handler);
@@ -130,7 +128,6 @@ export const Project = () => {
            <p class='text-sm'>${markdown}</p>
            `
         }
-
         else {
             message.innerHTML = `
         <small class="opacity-65 text-xs">${messageObject.sender.email}</small>
@@ -139,26 +136,24 @@ export const Project = () => {
             messageBox.appendChild(message);
         }
 
-
         scrollToBottom()
-
     }
 
     function appendOutgoingMessage(messageObject) {
         const messageBox = document.querySelector('.message-box');
-        const message = document.createElement('div');
-        message.classList.add('ml-auto', 'message', 'max-w-56', 'flex', 'flex-col', 'p-2', 'bg-slate-50', 'rounded-md');
-        message.innerHTML = `
+        const newmessage = document.createElement('div');
+        newmessage.classList.add('ml-auto', 'message', 'max-w-56', 'flex', 'flex-col', 'p-2', 'bg-slate-50', 'rounded-md');
+        newmessage.innerHTML = `
         <small class="opacity-65 text-xs">${messageObject.sender.email}</small>
         <p class="text-sm">${messageObject.message}</p>
     `;
-        messageBox.appendChild(message);
-        messageBox.scrollTop = messageBox.scrollHeight;
-        scrollToBottom()
-
+        messageBox.appendChild(newmessage);
+        scrollToBottom();
     }
     function scrollToBottom() {
-        messageBox.current.scrollTop = messageBox.current.scrollHeight
+        if (messageBox.current) {
+            messageBox.current.scrollTop = messageBox.current.scrollHeight;
+        }
     }
 
 
@@ -176,13 +171,30 @@ export const Project = () => {
                     </button>
                 </header>
 
-                <div className="conversational-area pt-14 pb-10 flex flex-col flex-grow 
-                h-full relative">
-
-                    <div ref={messageBox}
-                        className="message-box p-1 flex-grow overflow-y-auto  flex flex-col gap-1 scrollbar-hide">
+                <div className="conversational-area pt-14 pb-10 flex flex-col flex-grow h-full relative">
+                    <div
+                        ref={messageBox}
+                        className="message-box p-1 flex-grow flex flex-col gap-1 overflow-auto max-h-full scrollbar-hide">
+                        {messages.map((msg, index) => (
+                            <div key={index} className={`${msg.sender._id === 'ai' ? 'max-w-80' : 'max-w-54'} ${msg.sender._id == user._id.toString() && 'ml-auto'}  message flex flex-col p-2 bg-slate-50 w-fit rounded-md`}>
+                                <small className='opacity-65 text-xs'>{msg.sender.email}</small>
+                                <div className='text-sm'>
+                                    {msg.sender._id === 'ai'
+                                        ? <div className='overflow-auto bg-slate-950 text-white rounded-sm p-2'><Markdown
+                                            options={{
+                                                overrides: {
+                                                    code: { component: SyntaxHighlightedCode }
+                                                }
+                                            }}
+                                        >
+                                            {msg.message}
+                                        </Markdown>
+                                        </div>
+                                        : msg.message}
+                                </div>
+                            </div>
+                        ))}
                     </div>
-
 
                     <div className="inputField w-full flex absolute bottom-0">
                         <input value={message}
@@ -190,69 +202,63 @@ export const Project = () => {
                             className='p-2 px-4 border-none outline-none flex-grow'
                             type='text'
                             placeholder='Enter message' />
-                        <button
-                            onClick={send}
-                            className='px-5 bg-slate-950 text-white'>
-                            <i className='ri-send-plane-fill'></i></button>
+                        <button onClick={send} className='px-5 bg-slate-950 text-white'>
+                            <i className='ri-send-plane-fill'></i>
+                        </button>
                     </div>
                 </div>
 
                 <div className={`sidePanel w-full h-full flex flex-col gap-2 bg-slate-50 absolute transition-all ${isSidePanelOpen ? 'translate-x-0' : '-translate-x-full'} top-0`}>
                     <header className='flex justify-between items-center px-4 p-2 bg-slate-200'>
-
                         <h1 className='font-semibold text-lg'>Collaborators</h1>
-
                         <button onClick={() => setIsSidePanelOpen(!isSidePanelOpen)} className='p-2'>
                             <i className="ri-close-fill"></i>
                         </button>
                     </header>
                     <div className="users flex flex-col gap-2">
-
-                        {project.users && project.users.map(user => {
-                            return (
-                                <div className="user cursor-pointer hover:bg-slate-200 p-2 flex gap-2 items-center">
-                                    <div className='aspect-square rounded-full w-fit h-fit flex items-center justify-center p-5 text-white bg-slate-600'>
-                                        <i className="ri-user-fill absolute"></i>
-                                    </div>
-                                    <h1 className='font-semibold text-lg'>{user.email}</h1>
+                        {project.users && project.users.map(user => (
+                            <div key={user._id} className="user cursor-pointer hover:bg-slate-200 p-2 flex gap-2 items-center">
+                                <div className='aspect-square rounded-full w-fit h-fit flex items-center justify-center p-5 text-white bg-slate-600'>
+                                    <i className="ri-user-fill absolute"></i>
                                 </div>
-                            )
-
-
-                        })}
+                                <h1 className='font-semibold text-lg'>{user.email}</h1>
+                            </div>
+                        ))}
                     </div>
                 </div>
             </section>
 
-            {isModalOpen && (
-                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">
-                    <div className="bg-white p-4 rounded-md w-96 max-w-full relative flex flex-col h-[28rem]">
-                        <header className='flex justify-between items-center mb-4'>
-                            <h2 className='text-xl font-semibold'>Select User</h2>
-                            <button onClick={() => setIsModalOpen(false)} className='p-2'>
-                                <i className="ri-close-fill"></i>
-                            </button>
-                        </header>
-                        <div className="users-list flex flex-col gap-2 mb-16 max-96 overflow-auto">
-                            {users.map(user => (
-                                <div key={user._id} className={`user cursor-pointer hover:bg-slate-200 ${Array.from(selectedUserId).indexOf(user._id) != -1 ? 'bg-slate-200' : ""} p-2 flex gap-2 items-center`} onClick={() => handleUserClick(user._id)}>
-                                    <div className='aspect-square relative rounded-full w-fit h-fit flex items-center justify-center p-5 text-white bg-slate-600'>
-                                        <i className="ri-user-fill absolute"></i>
+            {
+                isModalOpen && (
+                    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">
+                        <div className="bg-white p-4 rounded-md w-96 max-w-full relative flex flex-col h-[28rem]">
+                            <header className='flex justify-between items-center mb-4'>
+                                <h2 className='text-xl font-semibold'>Select User</h2>
+                                <button onClick={() => setIsModalOpen(false)} className='p-2'>
+                                    <i className="ri-close-fill"></i>
+                                </button>
+                            </header>
+                            <div className="users-list flex flex-col gap-2 mb-16 max-96 overflow-auto">
+                                {users.map(user => (
+                                    <div key={user._id} className={`user cursor-pointer hover:bg-slate-200 ${Array.from(selectedUserId).indexOf(user._id) != -1 ? 'bg-slate-200' : ""} p-2 flex gap-2 items-center`} onClick={() => handleUserClick(user._id)}>
+                                        <div className='aspect-square relative rounded-full w-fit h-fit flex items-center justify-center p-5 text-white bg-slate-600'>
+                                            <i className="ri-user-fill absolute"></i>
+                                        </div>
+                                        <h1 className='font-semibold text-lg'>{user.email}</h1>
                                     </div>
-                                    <h1 className='font-semibold text-lg'>{user.email}</h1>
-                                </div>
-                            ))}
+                                ))}
+                            </div>
+                            <button
+                                onClick={addCollaborators}
+                                className='absolute bottom-4 left-1/2 transform -translate-x-1/2 px-4 py-2 bg-blue-600 text-white rounded-md'>
+                                Add Collaborators
+                            </button>
                         </div>
-                        <button
-                            onClick={addCollaborators}
-                            className='absolute bottom-4 left-1/2 transform -translate-x-1/2 px-4 py-2 bg-blue-600 text-white rounded-md'>
-                            Add Collaborators
-                        </button>
                     </div>
-                </div>
-            )}
+                )
+            }
 
-        </main>
+        </main >
 
 
 

@@ -58,31 +58,35 @@ io.on('connection', (socket) => {
   socket.join(socket.roomId);
 
   socket.on('project-message', async data => {
+  const message = data.message;
+  const aiIsPresentInMessage = message.includes('@ai');
 
-    const message = data.message;
+  // Broadcast user’s message to other clients
+  socket.broadcast.to(socket.roomId).emit('project-message', data);
 
-    const aiIsPresentInMessage = message.includes('@ai');
-    socket.broadcast.to(socket.roomId).emit('project-message', data)
-
-    if (aiIsPresentInMessage) {
-
-      const prompt = message.replace('@ai', '');
-
+  if (aiIsPresentInMessage) {
+    const prompt = message.replace('@ai', '');
+    try {
       const result = await generateResult(prompt);
-
       io.to(socket.roomId).emit('project-message', {
         message: result,
         sender: {
           _id: 'ai',
           email: 'AI'
         }
-      })
-
-      return
+      });
+    } catch (error) {
+      console.error("AI error:", error);
+      io.to(socket.roomId).emit('project-message', {
+        message: " AI is temporarily unavailable. Please try again later.",
+        sender: {
+          _id: 'ai',
+          email: 'AI'
+        }
+      });
     }
-
-
-  })
+  }
+});
 
   socket.on('disconnect', () => {
     console.log('user disconnected');
