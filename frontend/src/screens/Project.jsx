@@ -35,7 +35,10 @@ export const Project = () => {
     const [users, setUsers] = useState([])
     const [messages, setMessages] = useState([])
 
+    const [fileTree,setFileTree]=useState({})
 
+   const [currentFile,setCurrentFile]=useState(null);
+   const [openFiles,setOpenFiles] = useState([]);
 
     const handleUserClick = (id) => {
         setSelectedUserId(prevSelectedUserId => {
@@ -64,6 +67,8 @@ export const Project = () => {
 
     }
 
+
+
     const send = () => {
 
         sendMessage('project-message', {
@@ -80,11 +85,37 @@ export const Project = () => {
 
     }
 
+    function WriteAiMessage(message) {
+
+        const messageObject = JSON.parse(message)
+
+        return (
+            <div
+                className='overflow-auto bg-slate-950 text-white rounded-sm p-2'
+            >
+                <Markdown
+                    children={messageObject.text}
+                    options={{
+                        overrides: {
+                            code: SyntaxHighlightedCode,
+                        },
+                    }}
+                />
+            </div>)
+    }
+
     useEffect(() => {
         initializeSocket(project._id);
 
         const handler = (data) => {
-            console.log(data);
+            const message=JSON.parse(data.message)
+
+            if(message.fileTree){
+                setFileTree(message.fileTree)
+                console.log('Received fileTree:', message.fileTree)
+
+            }
+
             appendIncomingMessage(data);
             setMessages(prevMessages => [...prevMessages, data])
         };
@@ -178,19 +209,10 @@ export const Project = () => {
                         {messages.map((msg, index) => (
                             <div key={index} className={`${msg.sender._id === 'ai' ? 'max-w-80' : 'max-w-54'} ${msg.sender._id == user._id.toString() && 'ml-auto'}  message flex flex-col p-2 bg-slate-50 w-fit rounded-md`}>
                                 <small className='opacity-65 text-xs'>{msg.sender.email}</small>
-                                <div className='text-sm'>
-                                    {msg.sender._id === 'ai'
-                                        ? <div className='overflow-auto bg-slate-950 text-white rounded-sm p-2'><Markdown
-                                            options={{
-                                                overrides: {
-                                                    code: { component: SyntaxHighlightedCode }
-                                                }
-                                            }}
-                                        >
-                                            {msg.message}
-                                        </Markdown>
-                                        </div>
-                                        : msg.message}
+                               <div className='text-sm'>
+                                    {msg.sender._id === 'ai' ?
+                                        WriteAiMessage(msg.message)
+                                        : <p>{msg.message}</p>}
                                 </div>
                             </div>
                         ))}
@@ -228,6 +250,68 @@ export const Project = () => {
                 </div>
             </section>
 
+
+            <section className='right  bg-red-50 flex-grow h-full flex'>
+           <div className='explorer h-full max-w-64 min-w-52 bg-slate-200'>
+             <div className="file-tree w-full">
+                   {
+                            Object.keys(fileTree).map((file, index) => (
+                              <button 
+                              onClick={()=>{
+                                setCurrentFile(file)
+                                setOpenFiles([...new Set([...openFiles, file])])
+
+                              }}
+                              
+                              className="tree-element cursor-pointer p-2 px-4 flex items-center gap-2 bg-slate-300 w-full">
+                                <p className='font-semibold text-lg'>{file}</p>
+
+                                               </button>))
+                   }
+
+             </div>
+           </div>
+
+
+           {currentFile && (
+
+           <div className="code-editor flex flex-col flex-grow h-full ">
+            <div className="top flex">
+                {
+                    openFiles.map((file,index)=>(
+                     <button
+                      onClick={() => setCurrentFile(file)}
+                                    
+                                    className={`open-file cursor-pointer p-2 px-4 flex items-center w-fit gap-2 bg-slate-300 ${currentFile === file ? 'bg-slate-400' : ''}`}>
+                                    <p
+                                        className='font-semibold text-lg'
+                                    >{file}</p>
+                                </button>
+                    ))
+
+                }           
+                 </div>
+            <div className="bottom flex flex-grow">
+                {
+                    fileTree[currentFile] && (
+                        <textarea value={fileTree[currentFile].content}
+                        onChange={(e)=>{
+                            setFileTree({
+                                ...fileTree,
+                                [currentFile]:{
+                                    content:e.target.value
+                                }
+                            })
+                        }}
+                        className='w-full h-full p-4 bg-slate-50 '></textarea>
+                    )
+                }
+                
+            </div> 
+           </div>
+           )}
+            </section>
+            
             {
                 isModalOpen && (
                     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">
