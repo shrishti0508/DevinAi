@@ -9,15 +9,15 @@ import 'highlight.js/styles/atom-one-dark.min.css';
 import { getWebContainer } from '../config/webcontainer'
 
 function SyntaxHighlightedCode(props) {
-  const ref = useRef(null)
+    const ref = useRef(null)
 
-  useEffect(() => {
-    if (ref.current && props.className?.includes('lang-')) {
-      hljs.highlightElement(ref.current)
-    }
-  }, [props.className, props.children])
+    useEffect(() => {
+        if (ref.current && props.className?.includes('lang-')) {
+            hljs.highlightElement(ref.current)
+        }
+    }, [props.className, props.children])
 
-  return <code {...props} ref={ref} />
+    return <code {...props} ref={ref} />
 }
 
 export const Project = () => {
@@ -35,10 +35,14 @@ export const Project = () => {
     const [users, setUsers] = useState([])
     const [messages, setMessages] = useState([])
 
-    const [fileTree,setFileTree]=useState({})
+    const [fileTree, setFileTree] = useState({})
 
-   const [currentFile,setCurrentFile]=useState(null);
-   const [openFiles,setOpenFiles] = useState([]);
+    const [currentFile, setCurrentFile] = useState(null);
+    const [openFiles, setOpenFiles] = useState([]);
+
+    const [webContainer, setWebContainer] = useState(null)
+    const [iframeUrl, setIframeUrl] = useState(null)
+    const [runProcess,setRunProcess]=useState(null)
 
     const handleUserClick = (id) => {
         setSelectedUserId(prevSelectedUserId => {
@@ -86,39 +90,72 @@ export const Project = () => {
     }
 
     function WriteAiMessage(message) {
-
-        const messageObject = JSON.parse(message)
+        let messageObject = { text: message }; // default: treat as plain text
+        try {
+            messageObject = JSON.parse(message);
+        } catch (e) {
+            // keep messageObject.text = message
+        }
 
         return (
-            <div
-                className='overflow-auto bg-slate-950 text-white rounded-sm p-2'
-            >
+            <div className='overflow-auto bg-slate-950 text-white rounded-sm p-2'>
                 <Markdown
                     children={messageObject.text}
                     options={{
-                        overrides: {
-                            code: SyntaxHighlightedCode,
-                        },
+                        overrides: { code: SyntaxHighlightedCode }
                     }}
                 />
-            </div>)
+            </div>
+        );
     }
+
 
     useEffect(() => {
         initializeSocket(project._id);
 
+        if (!webContainer) {
+            getWebContainer().then(container => {
+                setWebContainer(container)
+                console.log("container started")
+            })
+        }
+
         const handler = (data) => {
-            const message=JSON.parse(data.message)
-
-            if(message.fileTree){
-                setFileTree(message.fileTree)
-                console.log('Received fileTree:', message.fileTree)
-
+            let parsed;
+            try {
+                parsed = JSON.parse(data.message);
+            } catch (e) {
+                // Fallback: treat as plain text message
+                parsed = { text: data.message };
             }
 
-            appendIncomingMessage(data);
-            setMessages(prevMessages => [...prevMessages, data])
+            // If parsed.fileTree exists → update side panel
+            if (parsed.fileTree) {
+                console.log('Received fileTree:', JSON.stringify(parsed.fileTree, null, 2));
+                webContainer?.mount(parsed.fileTree);
+                setFileTree(parsed.fileTree);
+            }
+
+            // Decide what text to show in chat:
+            // if parsed.text exists → use that, else if parsed.fileTree and no text → show "AI sent new code"
+            const textToShow = parsed.text || (parsed.fileTree ? "AI updated the code files." : data.message);
+
+            // Add to messages list
+            setMessages(prev => [
+                ...prev,
+                {
+                    sender: { _id: 'ai', email: 'AI Bot' },
+                    message: textToShow
+                }
+            ]);
+
+            // Also append in DOM manually (only needed if you still use appendIncomingMessage)
+            appendIncomingMessage({
+                sender: { _id: 'ai', email: 'AI Bot' },
+                message: textToShow
+            });
         };
+
 
         receiveMessage('project-message', handler);
 
@@ -129,6 +166,7 @@ export const Project = () => {
             console.log(res.data.project);
 
             setProject(res.data.project)
+            setFileTree(res.data.project.fileTree);
         })
 
         axios.get('/users/all').then(res => {
@@ -138,12 +176,23 @@ export const Project = () => {
             console.log(err);
         })
 
-        
+
         return () => {
             // Cleanup the socket listener to avoid stacking
             window.socket?.off('project-message', handler);
         }
     }, []);
+
+      function saveFileTree(ft) {
+        axios.put('/projects/update-file-tree', {
+            projectId: project._id,
+            fileTree: ft
+        }).then(res => {
+            console.log(res.data)
+        }).catch(err => {
+            console.log(err)
+        })
+    }
 
 
 
@@ -207,9 +256,9 @@ export const Project = () => {
                         ref={messageBox}
                         className="message-box p-1 flex-grow flex flex-col gap-1 overflow-auto max-h-full scrollbar-hide">
                         {messages.map((msg, index) => (
-                            <div key={index} className={`${msg.sender._id === 'ai' ? 'max-w-80' : 'max-w-54'} ${msg.sender._id == user._id.toString() && 'ml-auto'}  message flex flex-col p-2 bg-slate-50 w-fit rounded-md`}>
+                            <div key={index} className={`${msg.sender._id === 'ai' ? 'max-w-80' : 'max-w-52'} ${msg.sender._id == user._id.toString() && 'ml-auto'}  message flex flex-col p-2 bg-slate-50 w-fit rounded-md`}>
                                 <small className='opacity-65 text-xs'>{msg.sender.email}</small>
-                               <div className='text-sm'>
+                                <div className='text-sm'>
                                     {msg.sender._id === 'ai' ?
                                         WriteAiMessage(msg.message)
                                         : <p>{msg.message}</p>}
@@ -252,66 +301,138 @@ export const Project = () => {
 
 
             <section className='right  bg-red-50 flex-grow h-full flex'>
-           <div className='explorer h-full max-w-64 min-w-52 bg-slate-200'>
-             <div className="file-tree w-full">
-                   {
+                <div className='explorer h-full max-w-64 min-w-52 bg-slate-200'>
+                    <div className="file-tree w-full">
+                        {
                             Object.keys(fileTree).map((file, index) => (
-                              <button 
-                              onClick={()=>{
-                                setCurrentFile(file)
-                                setOpenFiles([...new Set([...openFiles, file])])
+                                <button
+                                    onClick={() => {
+                                        setCurrentFile(file)
+                                        setOpenFiles([...new Set([...openFiles, file])])
 
-                              }}
-                              
-                              className="tree-element cursor-pointer p-2 px-4 flex items-center gap-2 bg-slate-300 w-full">
-                                <p className='font-semibold text-lg'>{file}</p>
+                                    }}
 
-                                               </button>))
-                   }
+                                    className="tree-element cursor-pointer p-2 px-4 flex items-center gap-2 bg-slate-300 w-full">
+                                    <p className='font-semibold text-lg'>{file}</p>
 
-             </div>
-           </div>
+                                </button>))
+                        }
+
+                    </div>
+                </div>
 
 
-           {currentFile && (
+                {currentFile && (
 
-           <div className="code-editor flex flex-col flex-grow h-full ">
-            <div className="top flex">
-                {
-                    openFiles.map((file,index)=>(
-                     <button
-                      onClick={() => setCurrentFile(file)}
-                                    
-                                    className={`open-file cursor-pointer p-2 px-4 flex items-center w-fit gap-2 bg-slate-300 ${currentFile === file ? 'bg-slate-400' : ''}`}>
-                                    <p
-                                        className='font-semibold text-lg'
-                                    >{file}</p>
-                                </button>
-                    ))
+                    <div className="code-editor flex flex-col flex-grow h-full ">
+                        <div className="top flex justify-between w-full">
+                            <div className="files flex ">
+                                {
+                                    openFiles.map((file, index) => (
+                                        <button
+                                            onClick={() => setCurrentFile(file)}
 
-                }           
-                 </div>
-            <div className="bottom flex flex-grow">
-                {
-                    fileTree[currentFile] && (
-                        <textarea value={fileTree[currentFile].content}
-                        onChange={(e)=>{
-                            setFileTree({
-                                ...fileTree,
-                                [currentFile]:{
-                                    content:e.target.value
+                                            className={`open-file cursor-pointer p-2 px-4 flex items-center w-fit gap-2 bg-slate-300 ${currentFile === file ? 'bg-slate-400' : ''}`}>
+                                            <p
+                                                className='font-semibold text-lg'
+                                            >{file}</p>
+                                        </button>
+                                    ))
+
                                 }
-                            })
-                        }}
-                        className='w-full h-full p-4 bg-slate-50 '></textarea>
-                    )
+                            </div>
+
+                            <div className="actions flex gap-2">
+                                <button
+                                onClick={async () => {
+                                    await webContainer.mount(fileTree)
+
+                                    const installProcess = await webContainer.spawn("npm", [ "install" ])
+
+                                    installProcess.output.pipeTo(new WritableStream({
+                                        write(chunk) {
+                                            console.log(chunk)
+                                        }
+                                    }))
+
+                                    if (runProcess) {
+                                        runProcess.kill()
+                                    }
+
+                                    let tempRunProcess = await webContainer.spawn("npm", [ "start" ]);
+
+                                    tempRunProcess.output.pipeTo(new WritableStream({
+                                        write(chunk) {
+                                            console.log(chunk)
+                                        }
+                                    }))
+
+                                    setRunProcess(tempRunProcess)
+
+                                    webContainer.on('server-ready', (port, url) => {
+                                        console.log(port, url)
+                                        setIframeUrl(url)
+                                    })
+
+                                }}
+                                className='p-2 px-4 bg-slate-300 text-white'
+                            >
+                                Run
+                            </button>
+                            </div>
+                        </div>
+                        <div className="bottom flex flex-grow max-w-full shrink overflow-auto">
+                            {
+                                fileTree[currentFile] && (
+                                    <div className="code-editor-area h-full overflow-auto flex-grow bg-slate-50">
+                                        <pre
+                                            className="hljs h-full">
+                                            <code
+                                                className="hljs h-full outline-none"
+                                                contentEditable
+                                                suppressContentEditableWarning
+                                                onBlur={(e) => {
+                                                const updatedContent = e.target.innerText;
+                                                const ft = {
+                                                    ...fileTree,
+                                                    [ currentFile ]: {
+                                                        file: {
+                                                            contents: updatedContent
+                                                        }
+                                                    }
+                                                }
+                                                setFileTree(ft)
+                                                saveFileTree(ft)
+                                            }}             dangerouslySetInnerHTML={{
+                                                    __html: hljs.highlight('javascript', fileTree[currentFile]?.file?.contents || '').value
+                                                }}
+                                                style={{
+                                                    whiteSpace: 'pre-wrap',
+                                                    paddingBottom: '25rem',
+                                                    counterSet: 'line-numbering',
+                                                }}
+                                            />
+                                        </pre>
+                                    </div>
+                                )
+                            }
+                        </div>
+                    </div>
+                )}
+                {iframeUrl && webContainer &&
+                    (<div className="flex min-w-96 flex-col h-full">
+                        <div className="address-bar">
+                            <input type="text"
+                                onChange={(e) => setIframeUrl(e.target.value)}
+                                value={iframeUrl} className="w-full p-2 px-4 bg-slate-200" />
+                        </div>
+                        <iframe src={iframeUrl} className="w-full h-full"></iframe>
+                    </div>)
                 }
-                
-            </div> 
-           </div>
-           )}
+
+
             </section>
-            
+
             {
                 isModalOpen && (
                     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">
